@@ -1,25 +1,45 @@
-import 'check.dart';
-
-const double impactLimit = 20.0;
-const double rotateLimit = 5.0;
-const double speedLimit = 10.0;
+const double impactLimit = 25.0;
+const double rotateLimit = 6.0;
+const double speedDropLimit = 15.0;
 
 class Logic {
-  static bool checkAccident(double acc, double oldAcc, double rotate, double oldRotate, double speed, double oldSpeed) {
-    double changeAcc = (acc - oldAcc).abs();
-    double changeRotate = (rotate - oldRotate).abs();
-    double dropSpeed = oldSpeed - speed;
+  static String verifyCrash(
+    double maxAcc,
+    double maxRotate,
+    double speedDrop,
+    double endAcc,
+    double endRotate,
+  ) {
+    bool bigHit = maxAcc >= impactLimit;
+    bool bigSpin = maxRotate >= rotateLimit;
+    bool bigDrop = speedDrop >= speedDropLimit;
 
-    bool hardImpact = changeAcc > impactLimit;
-    bool fastRotate = changeRotate > rotateLimit;
-    bool suddenStop = dropSpeed > speedLimit;
+    bool noMovement = endAcc < 2.0 && endRotate < 1.0;
+    bool continuedMovement = endAcc >= 2.0 || endRotate >= 1.0;
 
-    if (hardImpact && fastRotate && suddenStop) {
-      bool fake = Check.isFake(changeAcc, changeRotate, dropSpeed);
-      if (!fake) {
-        return true;
-      }
+    if (continuedMovement) {
+      return "Movement Continued Normally";
     }
-    return false;
+
+    if (bigHit && bigSpin && bigDrop) {
+      return "CONFIRMED";
+    }
+
+    if (bigHit && bigSpin && noMovement) {
+      return "CONFIRMED";
+    }
+    if (bigHit && !bigSpin) {
+      return "False Alarm: Impact Only";
+    }
+
+    if (!bigHit && bigSpin) {
+      return "False Alarm: Rotation Only";
+    }
+
+    return "No Real Accident Detected";
+  }
+
+  static bool checkAccident(double acc, double rotate, double speedDrop) {
+    return acc > 20.0 || rotate > 6.0;
   }
 }
