@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:sensors_plus/sensors_plus.dart';
 import 'package:geolocator/geolocator.dart';
 import 'logic.dart';
+import 'info.dart';
 
 class Home extends StatefulWidget {
   const Home({super.key});
@@ -338,6 +339,7 @@ class _HomeState extends State<Home> {
       appBar: AppBar(
         title: const Text("Accident Detection"),
         backgroundColor: Colors.blueAccent,
+        foregroundColor: Colors.white,
       ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
@@ -481,6 +483,19 @@ class _HomeState extends State<Home> {
             ],
 
             const Spacer(),
+            TextButton.icon(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const InfoPage()),
+                );
+              },
+              label: const Text(
+                "Sensors & OS Info",
+                style: TextStyle(fontSize: 13),
+              ),
+            ),
+            const SizedBox(height: 5),
             /*
             ElevatedButton(
               onPressed: testBtn,
