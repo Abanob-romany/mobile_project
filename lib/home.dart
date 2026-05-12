@@ -39,6 +39,7 @@ class _HomeState extends State<Home> {
 
   double? crashLat;
   double? crashLng;
+  String? crashTime;
 
   int count = 10;
   int cooldown = 0;
@@ -196,8 +197,8 @@ class _HomeState extends State<Home> {
       maxCheckRotate = rotate;
       endCheckAcc = acc;
       endCheckRotate = rotate;
-      if (maxCheckSpeed < 20.0) {
-        maxCheckSpeed = 75.0 + Random().nextDouble() * 15.0;
+      if (speed > maxCheckSpeed) {
+        maxCheckSpeed = speed;
       }
       initialSpeedDrop = maxCheckSpeed - speed;
     });
@@ -219,6 +220,9 @@ class _HomeState extends State<Home> {
           color = Colors.red;
           crashLat = currLat;
           crashLng = currLng;
+          DateTime now = DateTime.now();
+          crashTime =
+              "${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')} ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}";
           oldSpeed = maxCheckSpeed;
           oldAcc = maxCheckAcc;
           oldRotate = maxCheckRotate;
@@ -255,6 +259,7 @@ class _HomeState extends State<Home> {
       count = 10;
       crashLat = null;
       crashLng = null;
+      crashTime = null;
       maxCheckSpeed = 0.0;
       envMsg = "Waiting For Better GPS";
       checking = false;
@@ -341,7 +346,7 @@ class _HomeState extends State<Home> {
         backgroundColor: Colors.blueAccent,
         foregroundColor: Colors.white,
       ),
-      body: Padding(
+      body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -431,6 +436,8 @@ class _HomeState extends State<Home> {
                 "--- Last readings before accident ---",
                 style: TextStyle(fontSize: 14, color: Colors.grey[600]),
               ),
+              if (crashTime != null)
+                Text("Time: $crashTime", style: const TextStyle(fontSize: 16)),
               Text(
                 "Speed: ${oldSpeed.toStringAsFixed(1)} km/h",
                 style: const TextStyle(fontSize: 16),
@@ -482,7 +489,7 @@ class _HomeState extends State<Home> {
               ),
             ],
 
-            const Spacer(),
+            const SizedBox(height: 20),
             TextButton.icon(
               onPressed: () {
                 Navigator.push(
