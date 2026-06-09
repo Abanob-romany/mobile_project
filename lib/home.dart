@@ -48,6 +48,7 @@ class _HomeState extends State<Home> {
   Timer? timer;
   Timer? cooldownTimer;
   Timer? envTimer;
+  Timer? checkTimer;
   DateTime? lastGps;
   String envMsg = "Waiting For Better GPS";
 
@@ -57,6 +58,9 @@ class _HomeState extends State<Home> {
   double endCheckAcc = 0.0;
   double endCheckRotate = 0.0;
   double initialSpeedDrop = 0.0;
+
+  double? lastReliableLat;
+  double? lastReliableLng;
 
   @override
   void initState() {
@@ -71,6 +75,7 @@ class _HomeState extends State<Home> {
       );
       if (value < 0.5) value = 0.0;
 
+      if (!mounted) return;
       setState(() {
         if (status == "Normal" && !checking) {
           oldAcc = acc;
@@ -91,6 +96,7 @@ class _HomeState extends State<Home> {
       );
       if (value < 0.2) value = 0.0;
 
+      if (!mounted) return;
       setState(() {
         if (status == "Normal" && !checking) {
           oldRotate = rotate;
@@ -122,6 +128,7 @@ class _HomeState extends State<Home> {
     posSub = Geolocator.getPositionStream(locationSettings: settings).listen((
       Position position,
     ) {
+      if (!mounted) return;
       if (!gpsOn) {
         setState(() => gpsOn = true);
       }
@@ -133,7 +140,20 @@ class _HomeState extends State<Home> {
 
       double km = raw * 3.6;
 
+      bool isReliable = position.accuracy > 0 && position.accuracy <= 25.0;
+
       setState(() {
+        if (isReliable) {
+          currLat = position.latitude;
+          currLng = position.longitude;
+          lastReliableLat = position.latitude;
+          lastReliableLng = position.longitude;
+          if (firstLat == null && firstLng == null) {
+            firstLat = position.latitude;
+            firstLng = position.longitude;
+          }
+        }
+
         if (status == "Normal" && !checking) {
           oldSpeed = speed;
         }
@@ -142,16 +162,11 @@ class _HomeState extends State<Home> {
           maxCheckSpeed = speed;
         }
 
-        currLat = position.latitude;
-        currLng = position.longitude;
-        if (firstLat == null && firstLng == null) {
-          firstLat = position.latitude;
-          firstLng = position.longitude;
-        }
-
         if (status == "Normal") {
-          if (position.accuracy > 25 || speed <= 1.5) {
+          if (!isReliable || speed <= 1.5) {
             envMsg = "Weak GPS Signal / Indoor Mode";
+          } else {
+            envMsg = "GPS Signal OK";
           }
         }
       });
@@ -159,6 +174,7 @@ class _HomeState extends State<Home> {
     });
 
     envTimer = Timer.periodic(const Duration(seconds: 2), (t) {
+      if (!mounted) return;
       if (lastGps == null ||
           DateTime.now().difference(lastGps!).inSeconds > 3) {
         setState(() {
@@ -173,13 +189,10 @@ class _HomeState extends State<Home> {
       }
     });
   }
-
   void testAccident() {
     if (checking || status != "Normal" || cooldown > 0) return;
 
-    double speedDrop = oldSpeed - speed;
-
-    bool hit = Logic.checkAccident(acc, rotate, speedDrop);
+    bool hit = Logic.checkAccident(acc, rotate);
 
     if (hit) {
       trigger();
@@ -197,19 +210,21 @@ class _HomeState extends State<Home> {
       maxCheckRotate = rotate;
       endCheckAcc = acc;
       endCheckRotate = rotate;
-      if (speed > maxCheckSpeed) {
-        maxCheckSpeed = speed;
-      }
+
+      maxCheckSpeed = max(speed, oldSpeed);
       initialSpeedDrop = maxCheckSpeed - speed;
     });
 
-    Timer(const Duration(seconds: 3), () {
-      if (!checking) return;
+    checkTimer?.cancel();
+    checkTimer = Timer(const Duration(seconds: 3), () {
+      if (!mounted || !checking) return;
+
+      double speedDrop = maxCheckSpeed - speed;
 
       String result = Logic.verifyCrash(
         maxCheckAcc,
         maxCheckRotate,
-        initialSpeedDrop,
+        speedDrop,
         endCheckAcc,
         endCheckRotate,
       );
@@ -218,8 +233,8 @@ class _HomeState extends State<Home> {
         if (result == "CONFIRMED") {
           status = "Accident Detected!";
           color = Colors.red;
-          crashLat = currLat;
-          crashLng = currLng;
+          crashLat = lastReliableLat ?? currLat;
+          crashLng = lastReliableLng ?? currLng;
           DateTime now = DateTime.now();
           crashTime =
               "${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')} ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}";
@@ -240,7 +255,9 @@ class _HomeState extends State<Home> {
 
   void startCount() {
     count = 10;
+    timer?.cancel();
     timer = Timer.periodic(const Duration(seconds: 1), (t) {
+      if (!mounted) return;
       setState(() {
         if (count > 0) {
           count--;
@@ -264,10 +281,12 @@ class _HomeState extends State<Home> {
       envMsg = "Waiting For Better GPS";
       checking = false;
       timer?.cancel();
+      checkTimer?.cancel();
 
       cooldown = 10;
       cooldownTimer?.cancel();
       cooldownTimer = Timer.periodic(const Duration(seconds: 1), (t) {
+        if (!mounted) return;
         setState(() {
           if (cooldown > 0) {
             cooldown--;
@@ -285,40 +304,31 @@ class _HomeState extends State<Home> {
       status = "Emergency Sent";
       color = Colors.red;
       timer?.cancel();
+      checkTimer?.cancel();
     });
   }
 
-  /*
   void testBtn() {
     if (status == "Normal" && cooldown == 0) {
       setState(() {
-        oldSpeed = speed;
-        oldAcc = acc;
+        oldSpeed = 20.0;
         acc = 26.0;
-        oldRotate = rotate;
         rotate = 7.0;
-        if (crashLat == null) {
-          crashLat = firstLat ?? 30.0444;
-          crashLng = firstLng ?? 31.2357;
-        }
+        speed = 20.0;
       });
       trigger();
 
-      initialSpeedDrop = 16.0;
-
-      Timer(const Duration(milliseconds: 600), () {
+      Timer(const Duration(milliseconds: 1000), () {
         if (mounted && checking) {
           setState(() {
+            speed = 2.0;
             acc = 0.5;
             rotate = 0.1;
-            endCheckAcc = 0.5;
-            endCheckRotate = 0.1;
           });
         }
       });
     }
   }
-  */
 
   void resetFirstLoc() {
     setState(() {
@@ -335,6 +345,7 @@ class _HomeState extends State<Home> {
     timer?.cancel();
     cooldownTimer?.cancel();
     envTimer?.cancel();
+    checkTimer?.cancel();
     super.dispose();
   }
 
@@ -503,12 +514,10 @@ class _HomeState extends State<Home> {
               ),
             ),
             const SizedBox(height: 5),
-            /*
             ElevatedButton(
               onPressed: testBtn,
               child: const Text("Simulate Accident (Demo)"),
             ),
-            */
           ],
         ),
       ),

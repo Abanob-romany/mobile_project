@@ -1,5 +1,5 @@
-const double impactLimit = 25.0;
-const double rotateLimit = 6.0;
+const double impactLimit = 22.0;
+const double rotateLimit = 5.0;
 const double speedDropLimit = 15.0;
 
 class Logic {
@@ -10,36 +10,21 @@ class Logic {
     double endAcc,
     double endRotate,
   ) {
-    bool bigHit = maxAcc >= impactLimit;
-    bool bigSpin = maxRotate >= rotateLimit;
-    bool bigDrop = speedDrop >= speedDropLimit;
+    bool cond1 = maxAcc > impactLimit && maxRotate > rotateLimit;
+    bool cond2 = maxAcc > impactLimit && speedDrop > speedDropLimit;
 
-    bool noMovement = endAcc < 2.0 && endRotate < 1.0;
-    bool continuedMovement = endAcc >= 2.0 || endRotate >= 1.0;
-
-    if (continuedMovement) {
-      return "Movement Continued Normally";
-    }
-
-    if (bigHit && bigSpin && bigDrop) {
+    if (cond1 || cond2) {
       return "CONFIRMED";
     }
 
-    if (bigHit && bigSpin && noMovement) {
-      return "CONFIRMED";
-    }
-    if (bigHit && !bigSpin) {
-      return "False Alarm: Impact Only";
+    if (maxAcc <= impactLimit) {
+      return "False Alarm: Low Impact";
     }
 
-    if (!bigHit && bigSpin) {
-      return "False Alarm: Rotation Only";
-    }
-
-    return "No Real Accident Detected";
+    return "False Alarm: Insufficient Rotation or Speed Drop";
   }
 
-  static bool checkAccident(double acc, double rotate, double speedDrop) {
-    return acc > 20.0 || rotate > 6.0;
+  static bool checkAccident(double acc, double rotate) {
+    return acc > 22.0 || (acc > 18.0 && rotate > 5.0);
   }
 }
