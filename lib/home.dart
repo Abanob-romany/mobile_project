@@ -27,9 +27,8 @@ class _HomeState extends State<Home> {
   double rotate = 0.0;
   double oldRotate = 0.0;
 
-  String status = "Normal";
+  String status = "normal";
   Color color = Colors.green;
-  bool gpsOn = false;
 
   double? firstLat;
   double? firstLng;
@@ -50,7 +49,7 @@ class _HomeState extends State<Home> {
   Timer? envTimer;
   Timer? checkTimer;
   DateTime? lastGps;
-  String envMsg = "Waiting For Better GPS";
+  String envMsg = "";
 
   double maxCheckAcc = 0.0;
   double maxCheckRotate = 0.0;
@@ -75,9 +74,8 @@ class _HomeState extends State<Home> {
       );
       if (value < 0.5) value = 0.0;
 
-      if (!mounted) return;
       setState(() {
-        if (status == "Normal" && !checking) {
+        if (status == "normal" && !checking) {
           oldAcc = acc;
         }
         acc = value;
@@ -96,9 +94,8 @@ class _HomeState extends State<Home> {
       );
       if (value < 0.2) value = 0.0;
 
-      if (!mounted) return;
       setState(() {
-        if (status == "Normal" && !checking) {
+        if (status == "normal" && !checking) {
           oldRotate = rotate;
         }
         rotate = value;
@@ -114,83 +111,63 @@ class _HomeState extends State<Home> {
     LocationPermission perm = await Geolocator.checkPermission();
     if (perm == LocationPermission.denied) {
       perm = await Geolocator.requestPermission();
-      if (perm == LocationPermission.denied ||
-          perm == LocationPermission.deniedForever) {
-        return;
-      }
     }
 
-    const settings = LocationSettings(
-      accuracy: LocationAccuracy.bestForNavigation,
-      distanceFilter: 0,
-    );
+    posSub =
+        Geolocator.getPositionStream(
+          locationSettings: LocationSettings(
+            accuracy: LocationAccuracy.bestForNavigation,
+          ),
+        ).listen((Position position) {
+          lastGps = DateTime.now();
+          double ms = position.speed;
+          double kmh = ms * 3.6;
+          bool isReliable = position.accuracy > 0 && position.accuracy <= 25.0;
 
-    posSub = Geolocator.getPositionStream(locationSettings: settings).listen((
-      Position position,
-    ) {
-      if (!mounted) return;
-      if (!gpsOn) {
-        setState(() => gpsOn = true);
-      }
+          setState(() {
+            if (isReliable) {
+              if (firstLat == null && firstLng == null) {
+                firstLat = position.latitude;
+                firstLng = position.longitude;
+              }
+              currLat = position.latitude;
+              currLng = position.longitude;
+              lastReliableLat = position.latitude;
+              lastReliableLng = position.longitude;
+            }
 
-      lastGps = DateTime.now();
+            if (status == "normal" && !checking) {
+              oldSpeed = speed;
+            }
+            speed = kmh;
+            if (speed > maxCheckSpeed) {
+              maxCheckSpeed = speed;
+            }
 
-      double raw = position.speed;
-      if (raw < 0 || raw.isNaN) raw = 0.0;
-
-      double km = raw * 3.6;
-
-      bool isReliable = position.accuracy > 0 && position.accuracy <= 25.0;
-
-      setState(() {
-        if (isReliable) {
-          currLat = position.latitude;
-          currLng = position.longitude;
-          lastReliableLat = position.latitude;
-          lastReliableLng = position.longitude;
-          if (firstLat == null && firstLng == null) {
-            firstLat = position.latitude;
-            firstLng = position.longitude;
-          }
-        }
-
-        if (status == "Normal" && !checking) {
-          oldSpeed = speed;
-        }
-        speed = km;
-        if (speed > maxCheckSpeed) {
-          maxCheckSpeed = speed;
-        }
-
-        if (status == "Normal") {
-          if (!isReliable || speed <= 1.5) {
-            envMsg = "Weak GPS Signal / Indoor Mode";
-          } else {
-            envMsg = "GPS Signal OK";
-          }
-        }
-      });
-      testAccident();
-    });
+            if (status == "normal") {
+              if (!isReliable) {
+                envMsg = "weak GPS signal / indoor mode";
+              } else {
+                envMsg = "GPS signal ok";
+              }
+            }
+          });
+        });
 
     envTimer = Timer.periodic(const Duration(seconds: 2), (t) {
-      if (!mounted) return;
       if (lastGps == null ||
           DateTime.now().difference(lastGps!).inSeconds > 3) {
         setState(() {
-          if (status == "Normal") {
-            envMsg = "Offline Indoor Mode / Searching For Signal";
-          }
-          if (speed > 0) {
-            speed -= 1.0;
-            if (speed < 0) speed = 0.0;
+          if (status == "normal") {
+            envMsg = "weak GPS signal / indoor mode";
           }
         });
       }
     });
   }
+
   void testAccident() {
-    if (checking || status != "Normal" || cooldown > 0) return;
+    if (checking || status != "normal" || cooldown > 0) return;
 
     bool hit = Logic.checkAccident(acc, rotate);
 
@@ -202,9 +179,8 @@ class _HomeState extends State<Home> {
   void trigger() {
     setState(() {
       checking = true;
-      status = "Checking Accident...";
+      status = "checking accedant";
       color = Colors.orange;
-      envMsg = "Analyzing sensor behavior...";
 
       maxCheckAcc = acc;
       maxCheckRotate = rotate;
@@ -217,34 +193,37 @@ class _HomeState extends State<Home> {
 
     checkTimer?.cancel();
     checkTimer = Timer(const Duration(seconds: 3), () {
-      if (!mounted || !checking) return;
+      if (!checking) return;
 
       double speedDrop = maxCheckSpeed - speed;
 
-      String result = Logic.verifyCrash(
-        maxCheckAcc,
-        maxCheckRotate,
-        speedDrop,
-        endCheckAcc,
-        endCheckRotate,
-      );
+      String result = Logic.verifyCrash(maxCheckAcc, maxCheckRotate, speedDrop);
 
       setState(() {
-        if (result == "CONFIRMED") {
-          status = "Accident Detected!";
+        if (result == "confirmed") {
+          status = "accedant detected!";
           color = Colors.red;
           crashLat = lastReliableLat ?? currLat;
           crashLng = lastReliableLng ?? currLng;
-          DateTime now = DateTime.now();
           crashTime =
-              "${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')} ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}";
+              "${DateTime.now().month.toString().padLeft(2, '0')}-${DateTime.now().day.toString().padLeft(2, '0')} ${DateTime.now().hour.toString().padLeft(2, '0')}:${DateTime.now().minute.toString().padLeft(2, '0')}";
           oldSpeed = maxCheckSpeed;
           oldAcc = maxCheckAcc;
           oldRotate = maxCheckRotate;
-          envMsg = "Last Known Location Saved";
-          startCount();
+
+          count = 10;
+          timer?.cancel();
+          timer = Timer.periodic(const Duration(seconds: 1), (t) {
+            setState(() {
+              count--;
+              if (count <= 0) {
+                status = "emergency sent";
+                timer?.cancel();
+              }
+            });
+          });
         } else {
-          status = "Normal";
+          status = "normal";
           color = Colors.green;
           checking = false;
           envMsg = result;
@@ -253,32 +232,16 @@ class _HomeState extends State<Home> {
     });
   }
 
-  void startCount() {
-    count = 10;
-    timer?.cancel();
-    timer = Timer.periodic(const Duration(seconds: 1), (t) {
-      if (!mounted) return;
-      setState(() {
-        if (count > 0) {
-          count--;
-        } else {
-          status = "Emergency Sent";
-          timer?.cancel();
-        }
-      });
-    });
-  }
-
   void ok() {
     setState(() {
-      status = "Normal";
+      status = "normal";
       color = Colors.green;
       count = 10;
       crashLat = null;
       crashLng = null;
       crashTime = null;
       maxCheckSpeed = 0.0;
-      envMsg = "Waiting For Better GPS";
+      envMsg = "waiting for better GPS";
       checking = false;
       timer?.cancel();
       checkTimer?.cancel();
@@ -286,7 +249,6 @@ class _HomeState extends State<Home> {
       cooldown = 10;
       cooldownTimer?.cancel();
       cooldownTimer = Timer.periodic(const Duration(seconds: 1), (t) {
-        if (!mounted) return;
         setState(() {
           if (cooldown > 0) {
             cooldown--;
@@ -301,33 +263,11 @@ class _HomeState extends State<Home> {
   void sendSOS() {
     setState(() {
       checking = false;
-      status = "Emergency Sent";
+      status = "emergency sent";
       color = Colors.red;
       timer?.cancel();
       checkTimer?.cancel();
     });
-  }
-
-  void testBtn() {
-    if (status == "Normal" && cooldown == 0) {
-      setState(() {
-        oldSpeed = 20.0;
-        acc = 26.0;
-        rotate = 7.0;
-        speed = 20.0;
-      });
-      trigger();
-
-      Timer(const Duration(milliseconds: 1000), () {
-        if (mounted && checking) {
-          setState(() {
-            speed = 2.0;
-            acc = 0.5;
-            rotate = 0.1;
-          });
-        }
-      });
-    }
   }
 
   void resetFirstLoc() {
@@ -353,7 +293,7 @@ class _HomeState extends State<Home> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Accident Detection"),
+        title: const Text("accedent detection"),
         backgroundColor: Colors.blueAccent,
         foregroundColor: Colors.white,
       ),
@@ -383,13 +323,13 @@ class _HomeState extends State<Home> {
               style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.bold,
-                color: status != "Normal" ? Colors.red : Colors.grey[700],
+                color: status != "normal" ? Colors.red : Colors.grey[700],
               ),
             ),
             const SizedBox(height: 20),
-            if (status == "Accident Detected!")
+            if (status == "accedent detected!")
               Text(
-                "Calling for help in: $count s",
+                "calling help in: $count s",
                 textAlign: TextAlign.center,
                 style: const TextStyle(
                   fontSize: 28,
@@ -399,30 +339,30 @@ class _HomeState extends State<Home> {
               ),
             const SizedBox(height: 30),
             Text(
-              "Speed: ${speed.toStringAsFixed(1)} km/h",
+              "speed: ${speed.toStringAsFixed(1)} km/h",
               style: const TextStyle(fontSize: 18),
             ),
             const SizedBox(height: 10),
             Text(
-              "Acceleration: ${acc.toStringAsFixed(2)} m/s²",
+              "accelaration: ${acc.toStringAsFixed(2)} m/s²",
               style: const TextStyle(fontSize: 18),
             ),
             Text(
-              "Rotation: ${rotate.toStringAsFixed(2)} rad/s",
+              "rotation: ${rotate.toStringAsFixed(2)} rad/s",
               style: const TextStyle(fontSize: 18),
             ),
             const SizedBox(height: 15),
             Text(
-              "First Position: ${firstLat?.toStringAsFixed(6) ?? 'Waiting...'}, ${firstLng?.toStringAsFixed(6) ?? ''}",
+              "first position: ${firstLat?.toStringAsFixed(6) ?? 'waiting...'}, ${firstLng?.toStringAsFixed(6) ?? ''}",
               style: const TextStyle(fontSize: 14),
             ),
             Text(
-              "Current Position: ${currLat?.toStringAsFixed(6) ?? 'Waiting...'}, ${currLng?.toStringAsFixed(6) ?? ''}",
+              "current position: ${currLat?.toStringAsFixed(6) ?? 'waiting...'}, ${currLng?.toStringAsFixed(6) ?? ''}",
               style: const TextStyle(fontSize: 14),
             ),
             if (crashLat != null)
               Text(
-                "Accident Position: ${crashLat?.toStringAsFixed(6)}, ${crashLng?.toStringAsFixed(6)}",
+                "accedant position: ${crashLat?.toStringAsFixed(6)}, ${crashLng?.toStringAsFixed(6)}",
                 style: const TextStyle(
                   fontSize: 14,
                   color: Colors.red,
@@ -436,40 +376,40 @@ class _HomeState extends State<Home> {
                 onPressed: resetFirstLoc,
                 icon: const Icon(Icons.refresh, size: 16),
                 label: const Text(
-                  "Reset First Position",
+                  "reset first position",
                   style: TextStyle(fontSize: 12),
                 ),
               ),
             ),
-            if (status != "Normal") ...[
+            if (status != "normal") ...[
               const SizedBox(height: 10),
               Text(
-                "--- Last readings before accident ---",
-                style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+                "last readings before accedant",
+                style: TextStyle(fontSize: 14, color: Colors.grey),
               ),
               if (crashTime != null)
-                Text("Time: $crashTime", style: const TextStyle(fontSize: 16)),
+                Text("time: $crashTime", style: const TextStyle(fontSize: 16)),
               Text(
-                "Speed: ${oldSpeed.toStringAsFixed(1)} km/h",
+                "speed: ${oldSpeed.toStringAsFixed(1)} km/h",
                 style: const TextStyle(fontSize: 16),
               ),
               Text(
-                "Acceleration: ${oldAcc.toStringAsFixed(2)} m/s²",
+                "accelaration: ${oldAcc.toStringAsFixed(2)} m/s²",
                 style: const TextStyle(fontSize: 16),
               ),
               Text(
-                "Rotate: ${oldRotate.toStringAsFixed(2)} rad/s",
+                "rotation: ${oldRotate.toStringAsFixed(2)} rad/s",
                 style: const TextStyle(fontSize: 16),
               ),
             ],
             if (cooldown > 0)
               Text(
-                "Cooldown: $cooldown s",
+                "cooldown: $cooldown s",
                 style: const TextStyle(fontSize: 18, color: Colors.grey),
               ),
             const SizedBox(height: 40),
 
-            if (status != "Normal") ...[
+            if (status != "normal") ...[
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
@@ -480,11 +420,11 @@ class _HomeState extends State<Home> {
                     ),
                     onPressed: ok,
                     child: const Text(
-                      "I'M OK",
+                      "I'm ok",
                       style: TextStyle(color: Colors.white, fontSize: 18),
                     ),
                   ),
-                  if (status != "Emergency Sent")
+                  if (status != "emergency sent")
                     ElevatedButton(
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.red,
@@ -509,14 +449,9 @@ class _HomeState extends State<Home> {
                 );
               },
               label: const Text(
-                "Sensors & OS Info",
+                "sensors & info",
                 style: TextStyle(fontSize: 13),
               ),
-            ),
-            const SizedBox(height: 5),
-            ElevatedButton(
-              onPressed: testBtn,
-              child: const Text("Simulate Accident (Demo)"),
             ),
           ],
         ),
